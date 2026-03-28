@@ -22,15 +22,11 @@ from integrations.slack import SlackIntegration
 CREW_REQUIRED_KEYS = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "OPENAI_API_KEY"]
 
 app = typer.Typer(help="crewai-dev-teams: manage AI-powered development crews.")
-crew_app = typer.Typer(help="Manage crews.")
 env_app = typer.Typer(help="Manage environment variables.")
-
-app.add_typer(crew_app, name="crew")
-app.add_typer(env_app, name="env")
-
-# Sub-group for `crew project` commands
 project_app = typer.Typer(help="Manage crew projects.")
-crew_app.add_typer(project_app, name="project")
+
+app.add_typer(env_app, name="env")
+app.add_typer(project_app, name="project")
 
 
 def _env_manager() -> ENVManager:
@@ -38,11 +34,10 @@ def _env_manager() -> ENVManager:
 
 
 # ---------------------------------------------------------------------------
-# crew commands
+# crew commands (top-level)
 # ---------------------------------------------------------------------------
 
-
-@crew_app.command("create")
+@app.command("create")
 def crew_create(
     name: str = typer.Argument(..., help="Name of the crew to create."),
     model: Optional[str] = typer.Option(None, "--model", help="LLM model override for all agents."),
@@ -58,7 +53,6 @@ def crew_create(
 
     overrides: dict = {}
     if model:
-        # Apply model override to all roles
         from core.agent_factory import ROLES
         for role in ROLES:
             overrides.setdefault(role, {})["model"] = model
@@ -75,7 +69,7 @@ def crew_create(
     typer.echo(f"  Project path:  {config.project_path}")
 
 
-@crew_app.command("list")
+@app.command("list")
 def crew_list() -> None:
     """List all existing crews."""
     factory = CrewFactory()
@@ -85,7 +79,6 @@ def crew_list() -> None:
         typer.echo("No crews found.")
         return
 
-    # Simple table
     header = f"{'NAME':<20} {'SLACK CHANNEL':<25} {'CREATED AT':<25}"
     typer.echo(header)
     typer.echo("-" * len(header))
@@ -93,7 +86,7 @@ def crew_list() -> None:
         typer.echo(f"{crew.name:<20} {crew.slack_channel_name:<25} {crew.created_at:<25}")
 
 
-@crew_app.command("show")
+@app.command("show")
 def crew_show(
     name: str = typer.Argument(..., help="Name of the crew to show."),
 ) -> None:
@@ -108,7 +101,7 @@ def crew_show(
     typer.echo(yaml.dump(config.to_dict(), default_flow_style=False, allow_unicode=True))
 
 
-@crew_app.command("start")
+@app.command("start")
 def crew_start(
     name: str = typer.Argument(..., help="Name of the crew to start the Slack listener for."),
 ) -> None:
@@ -133,9 +126,8 @@ def crew_start(
 
 
 # ---------------------------------------------------------------------------
-# crew project commands
+# project subcommands
 # ---------------------------------------------------------------------------
-
 
 @project_app.command("init")
 def project_init(
@@ -157,25 +149,20 @@ def project_init(
         raise typer.Exit(1)
 
     from pathlib import Path
-
     project_path = Path(config.project_path)
-    git = GitManager()
-    git.init_repo(project_path)
+    GitManager().init_repo(project_path)
     DeploymentScaffold().generate(project_path, name)
-
     typer.echo(f"Project for crew '{name}' re-initialized at {project_path}.")
 
 
 # ---------------------------------------------------------------------------
-# env commands
+# env subcommands
 # ---------------------------------------------------------------------------
-
 
 @env_app.command("setup")
 def env_setup() -> None:
     """Interactively set up all required environment variables."""
-    env = _env_manager()
-    env.setup_interactive()
+    _env_manager().setup_interactive()
     typer.echo("Environment setup complete.")
 
 
@@ -185,8 +172,7 @@ def env_set(
     value: str = typer.Argument(..., help="Value to set."),
 ) -> None:
     """Set an environment variable in the .env file."""
-    env = _env_manager()
-    env.set(key, value)
+    _env_manager().set(key, value)
     typer.echo(f"Set {key}.")
 
 
@@ -195,8 +181,7 @@ def env_get(
     key: str = typer.Argument(..., help="Environment variable name."),
 ) -> None:
     """Get the value of an environment variable."""
-    env = _env_manager()
-    value = env.get(key)
+    value = _env_manager().get(key)
     if value is None:
         typer.echo(f"{key} is not set.", err=True)
         raise typer.Exit(1)
@@ -206,8 +191,7 @@ def env_get(
 @env_app.command("list")
 def env_list() -> None:
     """List all configured environment variable keys (no values)."""
-    env = _env_manager()
-    keys = env.list_keys()
+    keys = _env_manager().list_keys()
     if not keys:
         typer.echo("No environment variables configured.")
         return
@@ -220,8 +204,7 @@ def env_delete(
     key: str = typer.Argument(..., help="Environment variable name to delete."),
 ) -> None:
     """Delete an environment variable from the .env file."""
-    env = _env_manager()
-    env.delete(key)
+    _env_manager().delete(key)
     typer.echo(f"Deleted {key}.")
 
 

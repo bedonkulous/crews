@@ -7,7 +7,7 @@ echo "Creating virtual environment in ./${VENV_DIR}/ ..."
 python3 -m venv "${VENV_DIR}"
 
 echo "Installing dependencies from requirements.txt ..."
-"${VENV_DIR}/bin/pip" install --upgrade pip --quiet
+"${VENV_DIR}/bin/pip" install --upgrade pip setuptools wheel --quiet
 "${VENV_DIR}/bin/pip" install -r requirements.txt --quiet
 "${VENV_DIR}/bin/pip" install -e . --quiet
 

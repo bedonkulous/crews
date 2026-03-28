@@ -39,14 +39,8 @@ def _make_crew_config(name: str = "alpha") -> CrewConfig:
 # Help text
 # ---------------------------------------------------------------------------
 
-
 def test_help_exits_zero():
     result = runner.invoke(app, ["--help"])
-    assert result.exit_code == 0
-
-
-def test_crew_help_exits_zero():
-    result = runner.invoke(app, ["crew", "--help"])
     assert result.exit_code == 0
 
 
@@ -56,9 +50,8 @@ def test_env_help_exits_zero():
 
 
 # ---------------------------------------------------------------------------
-# crew create
+# create
 # ---------------------------------------------------------------------------
-
 
 def test_crew_create_success():
     config = _make_crew_config("alpha")
@@ -68,8 +61,7 @@ def test_crew_create_success():
     ):
         MockENV.return_value.validate_required.return_value = None
         MockFactory.return_value.create.return_value = config
-
-        result = runner.invoke(app, ["crew", "create", "alpha"])
+        result = runner.invoke(app, ["create", "alpha"])
 
     assert result.exit_code == 0, result.output
     assert "alpha" in result.output
@@ -82,7 +74,7 @@ def test_crew_create_missing_env_exits_1():
         MockENV.return_value.validate_required.side_effect = MissingEnvVarError(
             "Missing required environment variable(s): OPENAI_API_KEY"
         )
-        result = runner.invoke(app, ["crew", "create", "alpha"])
+        result = runner.invoke(app, ["create", "alpha"])
 
     assert result.exit_code == 1
 
@@ -94,23 +86,21 @@ def test_crew_create_duplicate_exits_1():
     ):
         MockENV.return_value.validate_required.return_value = None
         MockFactory.return_value.create.side_effect = CrewAlreadyExistsError("already exists")
-
-        result = runner.invoke(app, ["crew", "create", "alpha"])
+        result = runner.invoke(app, ["create", "alpha"])
 
     assert result.exit_code == 1
     assert "Error" in result.output
 
 
 # ---------------------------------------------------------------------------
-# crew list
+# list
 # ---------------------------------------------------------------------------
-
 
 def test_crew_list_with_crews():
     configs = [_make_crew_config("alpha"), _make_crew_config("beta")]
     with patch("cli.main.CrewFactory") as MockFactory:
         MockFactory.return_value.load_all.return_value = configs
-        result = runner.invoke(app, ["crew", "list"])
+        result = runner.invoke(app, ["list"])
 
     assert result.exit_code == 0, result.output
     assert "alpha" in result.output
@@ -120,22 +110,21 @@ def test_crew_list_with_crews():
 def test_crew_list_empty():
     with patch("cli.main.CrewFactory") as MockFactory:
         MockFactory.return_value.load_all.return_value = []
-        result = runner.invoke(app, ["crew", "list"])
+        result = runner.invoke(app, ["list"])
 
     assert result.exit_code == 0
     assert "No crews found" in result.output
 
 
 # ---------------------------------------------------------------------------
-# crew show
+# show
 # ---------------------------------------------------------------------------
-
 
 def test_crew_show_success():
     config = _make_crew_config("alpha")
     with patch("cli.main.CrewFactory") as MockFactory:
         MockFactory.return_value.load.return_value = config
-        result = runner.invoke(app, ["crew", "show", "alpha"])
+        result = runner.invoke(app, ["show", "alpha"])
 
     assert result.exit_code == 0, result.output
     assert "alpha" in result.output
@@ -144,7 +133,7 @@ def test_crew_show_success():
 def test_crew_show_not_found():
     with patch("cli.main.CrewFactory") as MockFactory:
         MockFactory.return_value.load.side_effect = CrewNotFoundError("not found")
-        result = runner.invoke(app, ["crew", "show", "missing"])
+        result = runner.invoke(app, ["show", "missing"])
 
     assert result.exit_code == 1
     assert "Error" in result.output
@@ -153,7 +142,6 @@ def test_crew_show_not_found():
 # ---------------------------------------------------------------------------
 # env set
 # ---------------------------------------------------------------------------
-
 
 def test_env_set():
     with patch("cli.main.ENVManager") as MockENV:
@@ -167,7 +155,6 @@ def test_env_set():
 # ---------------------------------------------------------------------------
 # env get
 # ---------------------------------------------------------------------------
-
 
 def test_env_get_existing_key():
     with patch("cli.main.ENVManager") as MockENV:
@@ -189,7 +176,6 @@ def test_env_get_missing_key_exits_1():
 # ---------------------------------------------------------------------------
 # env list
 # ---------------------------------------------------------------------------
-
 
 def test_env_list_keys():
     with patch("cli.main.ENVManager") as MockENV:
@@ -213,7 +199,6 @@ def test_env_list_empty():
 # ---------------------------------------------------------------------------
 # env delete
 # ---------------------------------------------------------------------------
-
 
 def test_env_delete():
     with patch("cli.main.ENVManager") as MockENV:
