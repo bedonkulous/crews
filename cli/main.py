@@ -6,6 +6,10 @@ from typing import Optional
 
 import typer
 import yaml
+from dotenv import load_dotenv
+
+# Load .env into os.environ early so all components can read tokens
+load_dotenv()
 
 from core.crew_factory import CrewFactory
 from core.env_manager import ENVManager
@@ -121,7 +125,138 @@ def crew_start(
         raise typer.Exit(1)
 
     typer.echo(f"Starting Slack listener for crew '{name}' (channel: {config.slack_channel_name})...")
+    typer.echo(f"  Channel ID: {config.slack_channel_id}")
+    typer.echo(f"  Project dir: {config.project_path}")
+
+    # Build file tools scoped to this crew's project directory
+    from pathlib import Path
+    from crewai import Agent as CrewAgent, Crew, Task as CrewTask, Process
+    from core.tools import FileWriterTool, FileReaderTool
+
+    project_dir = Path(config.project_path)
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    file_writer = FileWriterTool(project_dir=project_dir)
+    file_reader = FileReaderTool(project_dir=project_dir)
+    file_tools = [file_writer, file_reader]
+
+    # Slack client for posting progress updates mid-run
     slack = SlackIntegration()
+    channel_id = config.slack_channel_id
+
+    agents_by_role: dict[str, CrewAgent] = {}
+    for agent_cfg in config.agents:
+        # dev_manager gets no tools — it delegates
+        # developer, devops, architect get file tools
+        tools = file_tools if agent_cfg.role in ("developer", "devops", "architect") else []
+
+        # Enhance dev_manager to coordinate and wrap up cleanly
+        backstory = agent_cfg.backstory
+        if agent_cfg.role == "dev_manager":
+            backstory = (
+                f"{agent_cfg.backstory} "
+                "You break requests into clear phases: planning, implementation, review. "
+                "Delegate each phase to the right team member. "
+                "After all work is done, produce a concise final summary listing "
+                "what was accomplished and which files were created. "
+                "Do NOT continue delegating once the request is fully addressed."
+            )
+
+        crew_agent = CrewAgent(
+            role=agent_cfg.role,
+            goal=agent_cfg.goal,
+            backstory=backstory,
+            llm=agent_cfg.model,
+            allow_delegation=agent_cfg.allow_delegation,
+            tools=tools,
+        )
+        agents_by_role[agent_cfg.role] = crew_agent
+
+    all_agents = list(agents_by_role.values())
+    manager = agents_by_role.get("dev_manager")
+
+    def _post_update(msg: str) -> None:
+        """Post a progress update to the crew's Slack channel."""
+        try:
+            slack.post_message(channel_id, msg)
+        except Exception:
+            print(f"[crew] Failed to post update: {msg}", flush=True)
+
+    def _step_callback(step_output) -> None:
+        """Called after each agent step — posts progress to Slack."""
+        try:
+            agent_role = getattr(step_output, "agent", "unknown")
+            # step_output.output can be the raw text or a structured object
+            raw = getattr(step_output, "output", None) or str(step_output)
+            # Truncate long outputs for Slack
+            preview = str(raw)[:300]
+            _post_update(f"📋 *{agent_role}* completed a step:\n```{preview}```")
+        except Exception as exc:
+            print(f"[crew] step_callback error: {exc}", flush=True)
+
+    def _task_callback(task_output) -> None:
+        """Called when a task finishes — posts summary to Slack."""
+        try:
+            raw = getattr(task_output, "raw", None) or str(task_output)
+            preview = str(raw)[:500]
+            _post_update(f"✅ Task completed:\n```{preview}```")
+        except Exception as exc:
+            print(f"[crew] task_callback error: {exc}", flush=True)
+
+    def crew_handler(channel_id: str, text: str, role: str | None = None) -> str | None:
+        """Handle a Slack message by kicking off the crewAI crew."""
+        print(f"[crew] Processing: {text[:80]}...", flush=True)
+        _post_update(f"🚀 Starting work on: _{text[:200]}_")
+
+        if role and role != "dev_manager":
+            # Direct message to a specific agent — single task, sequential
+            agent = agents_by_role.get(role, manager)
+            _post_update(f"🎯 Routing to *{role}*...")
+            task = CrewTask(
+                description=text,
+                expected_output="A helpful response. Write any code to files using the file_writer tool.",
+                agent=agent,
+            )
+            crew = Crew(
+                agents=[agent],
+                tasks=[task],
+                verbose=True,
+                step_callback=_step_callback,
+                task_callback=_task_callback,
+            )
+        else:
+            # No specific role or dev_manager — use hierarchical process
+            _post_update("👔 *dev_manager* is coordinating the team...")
+            task = CrewTask(
+                description=text,
+                expected_output=(
+                    "Coordinate the team to complete this request. "
+                    "Write all code and config files using the file_writer tool. "
+                    "When finished, produce a final summary listing: "
+                    "1) What was accomplished, 2) Which files were created, "
+                    "3) How to run/use the result. Then stop."
+                ),
+            )
+            crew = Crew(
+                agents=all_agents,
+                tasks=[task],
+                process=Process.hierarchical,
+                manager_agent=manager,
+                verbose=True,
+                step_callback=_step_callback,
+                task_callback=_task_callback,
+            )
+
+        try:
+            result = crew.kickoff()
+            final = str(result)
+            _post_update(f"🏁 *Done!* Final summary:\n{final[:1500]}")
+            return None  # Already posted to Slack via callback
+        except Exception as exc:
+            print(f"[crew] Error: {exc}", flush=True)
+            return f"Error processing request: {exc}"
+
+    slack.register_crew_handler(config.slack_channel_id, crew_handler)
     slack.start_listener(crew_configs=[config])
 
 

@@ -29,6 +29,10 @@ class SlackIntegration:
         bot_token: Optional[str] = None,
         app_token: Optional[str] = None,
     ) -> None:
+        # Load .env into os.environ so tokens are available
+        from dotenv import load_dotenv
+        load_dotenv()
+
         self.bot_token = bot_token or os.environ.get("SLACK_BOT_TOKEN", "")
         self.app_token = app_token or os.environ.get("SLACK_APP_TOKEN", "")
         self.client = WebClient(token=self.bot_token)
@@ -140,16 +144,24 @@ class SlackIntegration:
         """
 
         if self._app is None:
+            import logging as _logging
+            _logging.basicConfig(level=_logging.DEBUG)
             self._app = App(token=self.bot_token)
 
         # Capture references for use inside the closure
         _crew_handler = crew_handler
         _integration = self
 
-        @self._app.message("")
-        def handle_message(message, say):  # noqa: ANN001
-            channel_id = message.get("channel", "")
-            text = message.get("text", "")
+        @self._app.event("message")
+        def handle_message(event, say):  # noqa: ANN001
+            # Skip bot messages to avoid infinite loops
+            if event.get("subtype") == "bot_message" or event.get("bot_id"):
+                print(f"[slack] Skipping bot message in {event.get('channel', '?')}", flush=True)
+                return
+            channel_id = event.get("channel", "")
+            text = event.get("text", "")
+            print(f"[slack] Message in {channel_id}: {text}", flush=True)
+            print(f"[slack] Registered channel handlers: {list(_integration._channel_handlers.keys())}", flush=True)
             _integration.dispatch_message(channel_id, text, _crew_handler)
 
         handler = SocketModeHandler(self._app, self.app_token)
