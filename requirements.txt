@@ -1,0 +1,7 @@
+crewai
+typer
+slack-bolt
+python-dotenv
+pyyaml
+hypothesis
+pytest

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "crewai-dev-teams"
+version = "0.1.0"
+description = "CLI for managing crewAI-powered software development teams"
+requires-python = ">=3.10"
+dependencies = [
+    "crewai",
+    "typer",
+    "slack-bolt",
+    "python-dotenv",
+    "pyyaml",
+]
+
+[project.scripts]
+crew = "cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli*", "core*", "integrations*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
