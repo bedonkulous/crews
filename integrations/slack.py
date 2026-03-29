@@ -144,8 +144,6 @@ class SlackIntegration:
         """
 
         if self._app is None:
-            import logging as _logging
-            _logging.basicConfig(level=_logging.DEBUG)
             self._app = App(token=self.bot_token)
 
         # Capture references for use inside the closure
