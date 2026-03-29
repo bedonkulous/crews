@@ -61,3 +61,58 @@ def test_initial_commit_raises_git_not_found_error(tmp_path, git_manager):
     with patch("subprocess.run", side_effect=FileNotFoundError):
         with pytest.raises(GitNotFoundError):
             git_manager.initial_commit(tmp_path, "my-crew")
+
+
+from core.exceptions import GitOperationError
+
+
+@pytest.fixture
+def initialized_repo(tmp_path, git_manager):
+    """Create a fully initialized git repo with one commit on 'main'."""
+    git_manager.init_repo(tmp_path)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    git_manager.initial_commit(tmp_path, "test-crew")
+    # Ensure the default branch is named 'main' regardless of system config
+    subprocess.run(["git", "branch", "-M", "main"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+class TestDiff:
+    """Tests for GitManager.diff — Requirements 0.3, 3.1, 3.2, 3.3."""
+
+    def test_diff_returns_changes_between_branches(self, initialized_repo, git_manager):
+        """diff should return unified diff text showing changes on the source branch."""
+        path = initialized_repo
+        git_manager.create_branch(path, "feature-x")
+        (path / "new_file.txt").write_text("hello world\n")
+        git_manager.stage_and_commit(path, ["new_file.txt"], "add new file")
+
+        result = git_manager.diff(path, "feature-x", "main")
+
+        assert "new_file.txt" in result
+        assert "hello world" in result
+
+    def test_diff_returns_empty_string_when_no_changes(self, initialized_repo, git_manager):
+        """diff should return empty string when branches are identical."""
+        path = initialized_repo
+        git_manager.create_branch(path, "no-changes")
+        git_manager.checkout(path, "main")
+
+        result = git_manager.diff(path, "no-changes", "main")
+
+        assert result == ""
+
+    def test_diff_raises_for_nonexistent_branch(self, initialized_repo, git_manager):
+        """diff should raise GitOperationError for a branch that doesn't exist."""
+        path = initialized_repo
+
+        with pytest.raises(GitOperationError):
+            git_manager.diff(path, "nonexistent-branch", "main")
+
+    def test_diff_raises_on_repo_with_no_commits(self, tmp_path, git_manager):
+        """diff should raise GitOperationError on a repo with no commits."""
+        git_manager.init_repo(tmp_path)
+
+        with pytest.raises(GitOperationError, match="no commits"):
+            git_manager.diff(tmp_path, "feature", "main")

@@ -17,5 +17,10 @@ class GitNotFoundError(Exception):
     """Raised when the git binary is not found on the system."""
 
 
+class GitOperationError(Exception):
+    """Raised when a git command fails (non-zero exit, merge conflict, etc.)."""
+
+
+
 class SlackUnavailableError(Exception):
     """Raised when the Slack API is unavailable after exhausting retries."""

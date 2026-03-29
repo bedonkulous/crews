@@ -131,7 +131,11 @@ def crew_start(
     # Build file tools scoped to this crew's project directory
     from pathlib import Path
     from crewai import Agent as CrewAgent, Crew, Task as CrewTask, Process
-    from core.tools import FileWriterTool, FileReaderTool
+    from core.tools import (
+        FileWriterTool, FileReaderTool,
+        SlackUpdateTool, StatusReportTool, ActivityLog,
+        GitCommitTool, GitDiffTool, GitPushTool,
+    )
 
     project_dir = Path(config.project_path)
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -140,32 +144,93 @@ def crew_start(
     file_reader = FileReaderTool(project_dir=project_dir)
     file_tools = [file_writer, file_reader]
 
+    # Git tools scoped to project directory
+    git_commit = GitCommitTool(project_dir=project_dir)
+    git_diff = GitDiffTool(project_dir=project_dir)
+    git_push = GitPushTool(project_dir=project_dir)
+
     # Slack client for posting progress updates mid-run
     slack = SlackIntegration()
     channel_id = config.slack_channel_id
 
+    # Shared activity log — all agents write to it, product_manager reads it
+    activity_log = ActivityLog()
+
     agents_by_role: dict[str, CrewAgent] = {}
     for agent_cfg in config.agents:
-        # dev_manager gets no tools — it delegates
-        # developer, devops, architect get file tools
-        tools = file_tools if agent_cfg.role in ("developer", "devops", "architect") else []
+        # Every agent gets a SlackUpdateTool to post progress
+        update_tool = SlackUpdateTool(
+            slack_integration=slack,
+            channel_id=channel_id,
+            agent_role=agent_cfg.role,
+            activity_log=activity_log,
+        )
 
-        # Enhance dev_manager to coordinate and wrap up cleanly
+        # Base tools: everyone can post updates
+        tools = [update_tool]
+
+        # developer, devops, architect also get file tools
+        if agent_cfg.role in ("developer", "devops", "architect"):
+            tools.extend(file_tools)
+
+        # developer gets git commit tool
+        if agent_cfg.role == "developer":
+            tools.append(git_commit)
+
+        # architect and security_engineer get git diff tool
+        if agent_cfg.role in ("architect", "security_engineer"):
+            tools.append(git_diff)
+
+        # product_manager gets the status report tool
+        if agent_cfg.role == "product_manager":
+            tools.append(StatusReportTool(activity_log=activity_log))
+
+        # Enhance backstories for better coordination
         backstory = agent_cfg.backstory
         if agent_cfg.role == "dev_manager":
             backstory = (
                 f"{agent_cfg.backstory} "
                 "You break requests into clear phases: planning, implementation, review. "
                 "Delegate each phase to the right team member. "
+                "After implementation, ALWAYS delegate a code review to the architect "
+                "and/or security_engineer before pushing. Use git_diff to inspect changes "
+                "yourself. Only use git_push after reviewers approve. "
                 "After all work is done, produce a concise final summary listing "
                 "what was accomplished and which files were created. "
                 "Do NOT continue delegating once the request is fully addressed."
             )
+            tools = [update_tool, git_push, git_diff]  # manager delegates + can push/review
+        elif agent_cfg.role == "architect":
+            backstory = (
+                f"{agent_cfg.backstory} "
+                "When asked to review code, use the git_diff tool to see what changed. "
+                "Provide structured feedback: approve or request changes with specifics."
+            )
+        elif agent_cfg.role == "security_engineer":
+            backstory = (
+                f"{agent_cfg.backstory} "
+                "When asked to review code, use the git_diff tool to inspect changes "
+                "for security issues. Provide structured feedback: approve or flag concerns."
+            )
+        elif agent_cfg.role == "product_manager":
+            backstory = (
+                f"{agent_cfg.backstory} "
+                "You track project progress and can provide status updates at any time. "
+                "Use the status_report tool to see what all agents have done. "
+                "Use the slack_update tool to post summaries to the channel."
+            )
+
+        # Tell all agents to post updates
+        agent_instructions = (
+            f"{backstory} "
+            "IMPORTANT: Use the slack_update tool to post brief progress updates "
+            "as you work — what you're starting, what you've completed, any issues."
+        )
 
         crew_agent = CrewAgent(
             role=agent_cfg.role,
             goal=agent_cfg.goal,
-            backstory=backstory,
+            backstory=agent_instructions,
             llm=agent_cfg.model,
             allow_delegation=agent_cfg.allow_delegation,
             tools=tools,
@@ -174,6 +239,8 @@ def crew_start(
 
     all_agents = list(agents_by_role.values())
     manager = agents_by_role.get("dev_manager")
+    # crewAI requires manager_agent NOT be in the agents list for hierarchical process
+    worker_agents = [a for a in all_agents if a is not manager]
 
     def _post_update(msg: str) -> None:
         """Post a progress update to the crew's Slack channel."""
@@ -238,7 +305,7 @@ def crew_start(
                 ),
             )
             crew = Crew(
-                agents=all_agents,
+                agents=worker_agents,
                 tasks=[task],
                 process=Process.hierarchical,
                 manager_agent=manager,
