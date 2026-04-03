@@ -212,6 +212,28 @@ def crew_start(
                 "When asked to review code, use the git_diff tool to inspect changes "
                 "for security issues. Provide structured feedback: approve or flag concerns."
             )
+        elif agent_cfg.role == "developer":
+            backstory = (
+                f"{agent_cfg.backstory} "
+                "Use slack_update to acknowledge assignments right away — something like "
+                "'Got it @dev_manager. Starting on [brief description] now.' "
+                "As you work, post short progress notes: what module you're building, "
+                "what you just finished, any blockers. "
+                "After committing code, address the reviewers directly: "
+                "'Committed [N] files to [branch]. @architect @security_engineer — "
+                "ready for your review when you are.' "
+                "After fixing review feedback, let the manager know: "
+                "'Fixed the issues from review. @dev_manager — ready to merge.'"
+            )
+        elif agent_cfg.role == "devops":
+            backstory = (
+                f"{agent_cfg.backstory} "
+                "Use slack_update to announce what infra or CI work you're doing — "
+                "keep it short and practical. "
+                "When infrastructure is ready, address the team: "
+                "'Pipeline configured. Deploy to staging will trigger on merge to main.' "
+                "No fluff — just what's done and what it means for the team."
+            )
         elif agent_cfg.role == "product_manager":
             backstory = (
                 f"{agent_cfg.backstory} "
