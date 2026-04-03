@@ -22,12 +22,16 @@ class FileWriterTool(BaseTool):
         "Use this to save code, configs, docs, etc."
     )
     project_dir: Path = Field(default=Path("."))
+    agent_role: str = Field(default="agent")
+    activity_log: Any = Field(default=None)
 
     def _run(self, file_path: str, content: str) -> str:
         """Write content to file_path relative to project_dir."""
         target = self.project_dir / file_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
+        if self.activity_log is not None:
+            self.activity_log.add(self.agent_role, f"Created file: {file_path}")
         return f"Wrote {len(content)} bytes to {file_path}"
 
 
@@ -144,6 +148,23 @@ import subprocess
 import re
 
 
+def _post_slack_update(
+    message: str,
+    agent_role: str,
+    activity_log: Any,
+    slack_integration: Any,
+    channel_id: str,
+) -> None:
+    """Log *message* to the activity log and post it to Slack if both are configured."""
+    if activity_log is not None:
+        activity_log.add(agent_role, message)
+    if slack_integration is not None and channel_id:
+        try:
+            slack_integration.post_message(channel_id, message)
+        except Exception:
+            pass
+
+
 def _validate_repo(project_dir: Path) -> str | None:
     """Check that project_dir is an initialized git repo with at least one commit.
 
@@ -184,6 +205,10 @@ class GitCommitTool(BaseTool):
     )
     project_dir: Path = Field(default=Path("."))
     branch_name: str = Field(default="")
+    slack_integration: Any = Field(default=None)
+    channel_id: str = Field(default="")
+    agent_role: str = Field(default="developer")
+    activity_log: Any = Field(default=None)
 
     def _run(self, file_paths: str, message: str) -> str:
         error = _validate_repo(self.project_dir)
@@ -213,7 +238,13 @@ class GitCommitTool(BaseTool):
                 gm.create_branch(self.project_dir, self.branch_name)
 
             commit_hash = gm.stage_and_commit(self.project_dir, files, message)
-            return f"Committed {len(files)} file(s) on branch '{self.branch_name or current_branch}': {commit_hash}"
+            branch = self.branch_name or current_branch
+            _post_slack_update(
+                f"*{self.agent_role}*: Committed {len(files)} file(s) to {branch} — "
+                f"'{message}'. @architect @security_engineer ready for review when you are.",
+                self.agent_role, self.activity_log, self.slack_integration, self.channel_id,
+            )
+            return f"Committed {len(files)} file(s) on branch '{branch}': {commit_hash}"
         except Exception as exc:
             return f"Error committing files: {exc}"
 
@@ -231,6 +262,10 @@ class GitDiffTool(BaseTool):
         "Optionally provide a branch name; defaults to current branch vs main."
     )
     project_dir: Path = Field(default=Path("."))
+    slack_integration: Any = Field(default=None)
+    channel_id: str = Field(default="")
+    agent_role: str = Field(default="architect")
+    activity_log: Any = Field(default=None)
 
     def _run(self, branch: str = "") -> str:
         error = _validate_repo(self.project_dir)
@@ -247,6 +282,11 @@ class GitDiffTool(BaseTool):
                     cwd=self.project_dir, capture_output=True, text=True, check=True,
                 )
                 branch = result.stdout.strip()
+
+            _post_slack_update(
+                f"*{self.agent_role}*: Starting code review of {branch}...",
+                self.agent_role, self.activity_log, self.slack_integration, self.channel_id,
+            )
 
             diff_text = gm.diff(self.project_dir, branch, "main")
             if not diff_text.strip():
@@ -269,6 +309,10 @@ class GitPushTool(BaseTool):
         "Optionally provide a branch name; defaults to current branch."
     )
     project_dir: Path = Field(default=Path("."))
+    slack_integration: Any = Field(default=None)
+    channel_id: str = Field(default="")
+    agent_role: str = Field(default="dev_manager")
+    activity_log: Any = Field(default=None)
 
     def _run(self, branch: str = "") -> str:
         error = _validate_repo(self.project_dir)
@@ -288,6 +332,11 @@ class GitPushTool(BaseTool):
 
             if branch in ("main", "master"):
                 return "Error: Already on main branch. Nothing to merge."
+
+            _post_slack_update(
+                f"*{self.agent_role}*: All reviews passed. Merging {branch} → main. 🚀",
+                self.agent_role, self.activity_log, self.slack_integration, self.channel_id,
+            )
 
             gm.checkout(self.project_dir, "main")
             gm.merge(self.project_dir, branch)
