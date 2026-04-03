@@ -203,14 +203,26 @@ def crew_start(
         elif agent_cfg.role == "architect":
             backstory = (
                 f"{agent_cfg.backstory} "
-                "When asked to review code, use the git_diff tool to see what changed. "
-                "Provide structured feedback: approve or request changes with specifics."
+                "When asked to review code: first use slack_update to announce you are "
+                "starting the review (e.g. 'Reviewing feature/auth now...'). "
+                "Then use git_diff to inspect the changes. "
+                "Post your findings with one of these verdicts: "
+                "'✅ Code review complete. Looks solid. [any minor notes]' "
+                "or '⚠️ Code review found issues. @developer please address: [specific items]'. "
+                "If you approve, follow up with: "
+                "'@dev_manager — architecture review passed, ready to merge.'"
             )
         elif agent_cfg.role == "security_engineer":
             backstory = (
                 f"{agent_cfg.backstory} "
-                "When asked to review code, use the git_diff tool to inspect changes "
-                "for security issues. Provide structured feedback: approve or flag concerns."
+                "When asked to review code: first use slack_update to announce you are "
+                "starting the security review. "
+                "Then use git_diff to scan for vulnerabilities and security issues. "
+                "Post your findings with one of these verdicts: "
+                "'✅ Security review passed. No issues found.' "
+                "or '⚠️ Security concern: [specific issue]. @developer please fix before merge: [what to do]'. "
+                "Once fixes are in place, confirm with: "
+                "'@dev_manager — security review cleared, approved for merge.'"
             )
         elif agent_cfg.role == "product_manager":
             backstory = (
