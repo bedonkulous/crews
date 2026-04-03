@@ -103,7 +103,7 @@ class SlackUpdateTool(BaseTool):
 
     def _run(self, message: str) -> str:
         """Post update to Slack and log it."""
-        formatted = f"💬 *{self.agent_role}*: {message}"
+        formatted = f"*{self.agent_role}*: {message}"
         if self.activity_log is not None:
             self.activity_log.add(self.agent_role, message)
         if self.slack_integration is not None and self.channel_id:
