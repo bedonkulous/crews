@@ -190,14 +190,19 @@ def crew_start(
         if agent_cfg.role == "dev_manager":
             backstory = (
                 f"{agent_cfg.backstory} "
-                "You break requests into clear phases: planning, implementation, review. "
-                "Delegate each phase to the right team member. "
-                "After implementation, ALWAYS delegate a code review to the architect "
-                "and/or security_engineer before pushing. Use git_diff to inspect changes "
-                "yourself. Only use git_push after reviewers approve. "
-                "After all work is done, produce a concise final summary listing "
-                "what was accomplished and which files were created. "
-                "Do NOT continue delegating once the request is fully addressed."
+                "When a new request comes in, use slack_update to announce the plan "
+                "to the team right away — e.g. 'New request received. Here's the plan: "
+                "1. @developer — implement, 2. @architect + @security_engineer — review, "
+                "3. I'll merge once you both approve.' "
+                "Address teammates directly by role when delegating: '@developer can you "
+                "take this?', '@architect please review the diff', '@security_engineer "
+                "anything look off here?'. "
+                "Before calling git_push, use slack_update to tell the team: "
+                "'Reviews look good — merging now.' "
+                "When everything's done, post a short wrap-up: what shipped, which files "
+                "changed, and any follow-ups. Keep messages brief and direct — "
+                "this is Slack, not a status report. "
+                "Do NOT keep delegating once the work is done."
             )
             tools = [update_tool, git_push, git_diff]  # manager delegates + can push/review
         elif agent_cfg.role == "architect":
@@ -215,9 +220,14 @@ def crew_start(
         elif agent_cfg.role == "product_manager":
             backstory = (
                 f"{agent_cfg.backstory} "
-                "You track project progress and can provide status updates at any time. "
-                "Use the status_report tool to see what all agents have done. "
-                "Use the slack_update tool to post summaries to the channel."
+                "When a request comes in, use slack_update to post the requirements "
+                "clearly for the team — e.g. '@developer here's what we need to build: "
+                "[short requirements]. Let me know if anything's unclear.' "
+                "Check in with the team using slack_update as work progresses: "
+                "'Quick status check — @developer how's it going? @dev_manager any "
+                "blockers?' Keep messages short and conversational. "
+                "Use status_report to see what's been done, then summarize it in plain "
+                "language for the channel — not a wall of text, just the key points."
             )
 
         # Tell all agents to post updates
