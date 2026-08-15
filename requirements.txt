@@ -3,5 +3,6 @@ typer
 slack-bolt
 python-dotenv
 pyyaml
+flask
 hypothesis
 pytest

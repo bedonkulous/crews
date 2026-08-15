@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ crew_name }}{% endblock %}
+
+{% block content %}
+<div x-data="crewDetail('{{ crew_name }}')" x-init="init()">
+
+  <div x-show="loading" aria-busy="true">Loading…</div>
+  <div x-cloak x-show="error"  class="alert alert-error"   x-text="error"></div>
+  <div x-cloak x-show="saved"  class="alert alert-success">Changes saved.</div>
+
+  <div x-cloak x-show="!loading && crew">
+
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:1.5rem;">
+      <h2 style="margin:0;" x-text="crew.name"></h2>
+      <a href="/">← Dashboard</a>
+    </div>
+
+    <!-- Metadata -->
+    <dl class="crew-meta">
+      <dt>Slack channel</dt><dd x-text="crew.slack_channel_name || '—'"></dd>
+      <dt>Channel ID</dt>   <dd x-text="crew.slack_channel_id  || '—'"></dd>
+      <dt>Project path</dt> <dd x-text="crew.project_path      || '—'"></dd>
+      <dt>Created</dt>      <dd x-text="formatDate(crew.created_at)"></dd>
+    </dl>
+
+    <!-- Agents -->
+    <h3>Agents</h3>
+    <p><small>Edit goals, backstories, and models below, then click <strong>Save Changes</strong>.</small></p>
+
+    <div class="agents-grid">
+      <template x-for="(agent, idx) in crew.agents" :key="agent.role">
+        <div class="agent-card">
+          <h4 x-text="agent.role.replace(/_/g, ' ')"></h4>
+
+          <label>Goal
+            <textarea x-model="crew.agents[idx].goal" rows="3"></textarea>
+          </label>
+          <label>Backstory
+            <textarea x-model="crew.agents[idx].backstory" rows="4"></textarea>
+          </label>
+          <label>Model
+            <select x-model="crew.agents[idx].model">
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-4-turbo">gpt-4-turbo</option>
+              <option value="gpt-4">gpt-4</option>
+              <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+            </select>
+          </label>
+          <label style="display:flex; gap:0.5rem; align-items:center;">
+            <input type="checkbox" x-model="crew.agents[idx].allow_delegation" style="width:auto; margin:0;" />
+            Allow delegation
+          </label>
+        </div>
+      </template>
+    </div>
+
+    <button @click="saveAgents" :disabled="saving" style="margin-top:1.5rem;">
+      <span x-show="saving" class="spinner"></span>
+      <span x-text="saving ? 'Saving…' : 'Save Changes'"></span>
+    </button>
+
+    <!-- Danger zone -->
+    <div class="danger-zone">
+      <h4>Danger zone</h4>
+      <p><small>Permanently removes this crew's directory and configuration.</small></p>
+      <button class="outline" style="border-color:#fca5a5; color:#991b1b;"
+        @click="deleteCrew" :disabled="deleting">
+        <span x-show="deleting" class="spinner"></span>
+        Delete this crew
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function crewDetail(name) {
+  return {
+    crew: null, loading: true, error: null, saving: false, saved: false, deleting: false,
+
+    async init() {
+      try {
+        const r = await fetch('/api/crews/' + encodeURIComponent(name));
+        if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error(b.error || r.statusText); }
+        this.crew = await r.json();
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async saveAgents() {
+      this.saving = true; this.error = null; this.saved = false;
+      try {
+        const r = await fetch('/api/crews/' + encodeURIComponent(name), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agents: this.crew.agents }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.error = data.error || 'Save failed.'; return; }
+        this.crew = data;
+        this.saved = true;
+        setTimeout(() => { this.saved = false; }, 3000);
+      } catch (e) {
+        this.error = 'Network error: ' + e.message;
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async deleteCrew() {
+      if (!confirm('Delete crew "' + name + '"? This cannot be undone.')) return;
+      this.deleting = true;
+      try {
+        const r = await fetch('/api/crews/' + encodeURIComponent(name), { method: 'DELETE' });
+        if (r.ok || r.status === 204) { window.location.href = '/'; return; }
+        const b = await r.json().catch(() => ({}));
+        this.error = b.error || 'Delete failed.';
+      } catch (e) {
+        this.error = 'Network error: ' + e.message;
+      } finally {
+        this.deleting = false;
+      }
+    },
+
+    formatDate(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString(); } catch(_) { return iso; }
+    },
+  };
+}
+</script>
+{% endblock %}
