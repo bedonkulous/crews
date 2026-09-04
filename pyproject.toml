@@ -13,14 +13,16 @@ dependencies = [
     "slack-bolt",
     "python-dotenv",
     "pyyaml",
+    "flask",
 ]
 
 [project.scripts]
 crew = "cli.main:app"
+crew-web = "web.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*", "core*", "integrations*"]
+include = ["cli*", "core*", "integrations*", "web*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

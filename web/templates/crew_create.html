@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}New Crew{% endblock %}
+
+{% block content %}
+<div x-data="createCrew()" style="max-width:520px;">
+
+  <h2>New Crew</h2>
+
+  <div x-cloak x-show="error" class="alert alert-error" x-text="error"></div>
+
+  <form @submit.prevent="submit">
+    <label>
+      Name
+      <input type="text" x-model="name" placeholder="my-crew" required
+        pattern="[a-zA-Z0-9_-]+" title="Letters, numbers, hyphens, and underscores only" />
+    </label>
+
+    <label>
+      LLM model
+      <select x-model="model">
+        <option value="gpt-4o">gpt-4o (default)</option>
+        <option value="gpt-4-turbo">gpt-4-turbo</option>
+        <option value="gpt-4">gpt-4</option>
+        <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+      </select>
+    </label>
+
+    <small>Creating a crew provisions a Slack channel and initialises a git repository. This may take a few seconds.</small>
+
+    <button type="submit" :disabled="submitting" style="margin-top:1rem; width:100%;">
+      <span x-show="submitting" class="spinner"></span>
+      <span x-text="submitting ? 'Creating…' : 'Create Crew'"></span>
+    </button>
+  </form>
+
+  <p style="margin-top:1rem;"><a href="/">← Back to dashboard</a></p>
+</div>
+
+<script>
+function createCrew() {
+  return {
+    name: '', model: 'gpt-4o', submitting: false, error: null,
+
+    async submit() {
+      this.error = null; this.submitting = true;
+      try {
+        const r = await fetch('/api/crews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.name, model: this.model }),
+        });
+        const data = await r.json();
+        if (!r.ok) { this.error = data.error || 'Failed to create crew.'; return; }
+        window.location.href = '/crews/' + encodeURIComponent(data.name);
+      } catch (e) {
+        this.error = 'Network error: ' + e.message;
+      } finally {
+        this.submitting = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

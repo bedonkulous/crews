@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+    <h2 style="margin:0;">Crews</h2>
+    <span x-cloak>
+      <span x-show="envOk"  class="badge badge-ok">Env OK</span>
+      <span x-show="!envOk" class="badge badge-warn" :title="'Missing: ' + envMissing.join(', ')">Env incomplete</span>
+    </span>
+  </div>
+
+  <div x-cloak x-show="error" class="alert alert-error" x-text="error"></div>
+
+  <div x-show="loading" aria-busy="true">Loading crews…</div>
+
+  <div x-cloak x-show="!loading && crews.length === 0">
+    <p>No crews yet. <a href="/crews/new">Create your first crew →</a></p>
+  </div>
+
+  <div x-cloak x-show="!loading && crews.length > 0">
+    <figure>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Slack channel</th>
+            <th>Created</th>
+            <th>Agents</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="crew in crews" :key="crew.name">
+            <tr>
+              <td><a :href="'/crews/' + crew.name" x-text="crew.name"></a></td>
+              <td><code x-text="crew.slack_channel_name || '—'"></code></td>
+              <td x-text="formatDate(crew.created_at)"></td>
+              <td x-text="crew.agents ? crew.agents.length : 0"></td>
+              <td>
+                <button class="outline" style="padding:0.25rem 0.75rem; font-size:0.85rem;"
+                  @click="deleteCrew(crew.name)" :disabled="deleting === crew.name">
+                  <span x-show="deleting === crew.name" class="spinner"></span>
+                  Delete
+                </button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </figure>
+  </div>
+
+</div>
+
+<script>
+function dashboard() {
+  return {
+    crews: [], loading: true, error: null, deleting: null,
+    envOk: true, envMissing: [],
+
+    async init() {
+      await Promise.all([this.loadCrews(), this.loadEnvStatus()]);
+    },
+
+    async loadCrews() {
+      this.loading = true; this.error = null;
+      try {
+        const r = await fetch('/api/crews');
+        if (!r.ok) throw new Error(await r.text());
+        this.crews = await r.json();
+      } catch (e) {
+        this.error = 'Failed to load crews: ' + e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async loadEnvStatus() {
+      try {
+        const r = await fetch('/api/env/status');
+        if (r.ok) { const d = await r.json(); this.envOk = d.ok; this.envMissing = d.missing || []; }
+      } catch (_) {}
+    },
+
+    async deleteCrew(name) {
+      if (!confirm(`Delete crew "${name}"? This removes its directory permanently.`)) return;
+      this.deleting = name;
+      try {
+        const r = await fetch('/api/crews/' + encodeURIComponent(name), { method: 'DELETE' });
+        if (r.ok || r.status === 204) {
+          this.crews = this.crews.filter(c => c.name !== name);
+        } else {
+          const b = await r.json().catch(() => ({}));
+          this.error = 'Delete failed: ' + (b.error || r.statusText);
+        }
+      } catch (e) {
+        this.error = 'Delete failed: ' + e.message;
+      } finally {
+        this.deleting = null;
+      }
+    },
+
+    formatDate(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleDateString(); } catch(_) { return iso; }
+    },
+  };
+}
+</script>
+{% endblock %}
